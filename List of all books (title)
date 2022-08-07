@@ -1,0 +1,21 @@
+CREATE VIEW BookList
+AS
+SELECT b.biblionumber, i.barcode, i.itemcallnumber, i.itype, i.location, i.onloan, i.booksellerid, i.price, i.replacementprice, i.dateaccessioned,
+    CONCAT(IF(CHAR_LENGTH(systempreferences.value), CONCAT(systempreferences.value),''),'/cgi-bin/koha/opac-image.pl?thumbnail=1&biblionumber=', b.biblionumber) AS cover,
+    b.author, b.title, b.subtitle, ExtractValue(m.metadata,'//datafield[@tag="245"]/subfield[@code>="c"]') AS credits,  bi.editionstatement as edition, bi.place, bi.publishercode AS publisher, 
+    ExtractValue(m.metadata,'//datafield[@tag="260"]/subfield[@code>="c"]') AS year, COUNT(i.barcode) AS copy, 
+    CONCAT(ExtractValue(m.metadata,'//datafield[@tag="526"]/subfield[@code>="a"]')) AS school, 
+    CONCAT(ExtractValue(m.metadata,'//datafield[@tag="526"]/subfield[@code>="b"]')) AS department,
+    CONCAT(ExtractValue(m.metadata,'//datafield[@tag="526"]/subfield[@code>="c"]')) AS course,
+    CONCAT(ExtractValue(m.metadata,'//datafield[@tag="952"]/subfield[@code>="c"]')) AS shelf,
+    CONCAT(ExtractValue(m.metadata,'//datafield[@tag="650"]/subfield[@code>="a"]')) AS subjects
+    
+    
+  FROM systempreferences, biblio b
+  LEFT JOIN biblioitems bi ON bi.biblionumber = b.biblionumber
+  LEFT JOIN items i ON i.biblionumber = b.biblionumber
+  LEFT JOIN biblio_metadata m ON m.biblionumber = b.biblionumber
+  LEFT JOIN cover_images c ON c.biblionumber = b.biblionumber
+    
+WHERE i.barcode IS NOT NULL AND systempreferences.variable='OPACBaseURL'
+GROUP by i.barcode;
