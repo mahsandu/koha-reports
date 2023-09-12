@@ -1,0 +1,20 @@
+SELECT
+  items.itemnumber,
+  items.barcode,
+  borrowers.cardnumber AS 'Card number',
+  DATEDIFF(IF(old_issues.returndate IS NOT NULL, old_issues.returndate, CURDATE()),issues.date_due) AS 'Due Days',
+  CONCAT('৳', ROUND(SUM(DATEDIFF(IF(old_issues.returndate IS NOT NULL, old_issues.returndate, CURDATE()),issues.date_due) * 2), 2)) AS 'Actual Fine',
+  CONCAT('৳', ROUND(SUM(accountlines.amountoutstanding), 2)) AS 'Amount Outstanding',
+  CONCAT('৳', ROUND(SUM(accountlines.amount), 2)) AS 'Amount due',  
+  SUM(ROUND(accountlines.amountoutstanding, 2) - ROUND(accountlines.amount, 2)) AS 'Difference',
+  CONCAT('<a href=\"/cgi-bin/koha/members/moremember.pl?borrowernumber=', borrowers.borrowernumber, '\">See patron file</a>' ) AS 'Link'
+FROM accountlines
+LEFT JOIN borrowers ON accountlines.borrowernumber = borrowers.borrowernumber
+LEFT JOIN items ON accountlines.itemnumber = items.itemnumber
+LEFT JOIN old_issues ON accountlines.itemnumber = old_issues.itemnumber
+LEFT JOIN issues ON accountlines.itemnumber = issues.itemnumber
+WHERE borrowers.cardnumber != 1
+  AND (accountlines.amount <> 0 OR accountlines.amountoutstanding <> 0)
+  AND accountlines.amount != accountlines.amountoutstanding
+GROUP BY items.itemnumber, items.barcode, borrowers.cardnumber, old_issues.date_due, old_issues.returndate
+ORDER BY borrowers.cardnumber ASC
