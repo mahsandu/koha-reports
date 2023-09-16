@@ -1,20 +1,45 @@
 SELECT
-  items.itemnumber,
-  items.barcode,
-  borrowers.cardnumber AS 'Card number',
-  DATEDIFF(IF(old_issues.returndate IS NOT NULL, old_issues.returndate, CURDATE()),issues.date_due) AS 'Due Days',
-  CONCAT('৳', ROUND(SUM(DATEDIFF(IF(old_issues.returndate IS NOT NULL, old_issues.returndate, CURDATE()),issues.date_due) * 2), 2)) AS 'Actual Fine',
-  CONCAT('৳', ROUND(SUM(accountlines.amountoutstanding), 2)) AS 'Amount Outstanding',
-  CONCAT('৳', ROUND(SUM(accountlines.amount), 2)) AS 'Amount due',  
-  SUM(ROUND(accountlines.amountoutstanding, 2) - ROUND(accountlines.amount, 2)) AS 'Difference',
-  CONCAT('<a href=\"/cgi-bin/koha/members/moremember.pl?borrowernumber=', borrowers.borrowernumber, '\">See patron file</a>' ) AS 'Link'
-FROM accountlines
-LEFT JOIN borrowers ON accountlines.borrowernumber = borrowers.borrowernumber
-LEFT JOIN items ON accountlines.itemnumber = items.itemnumber
-LEFT JOIN old_issues ON accountlines.itemnumber = old_issues.itemnumber
-LEFT JOIN issues ON accountlines.itemnumber = issues.itemnumber
-WHERE borrowers.cardnumber != 1
-  AND (accountlines.amount <> 0 OR accountlines.amountoutstanding <> 0)
-  AND accountlines.amount != accountlines.amountoutstanding
-GROUP BY items.itemnumber, items.barcode, borrowers.cardnumber, old_issues.date_due, old_issues.returndate
-ORDER BY borrowers.cardnumber ASC
+    cardnumber,
+    barcode,
+    itemnumber,
+    DueDate,
+    TotalDays,
+    CAST(AmountOutStanding AS SIGNED) AS AmountOutStanding,
+    CAST(Amount AS SIGNED) AS Amount,
+    (TotalDays * 2) AS TotalFine,
+    status,
+    timestamp,
+    credit_type_code
+    
+FROM (
+    SELECT
+        b.cardnumber AS cardnumber,
+        i.barcode AS barcode,
+        a.itemnumber AS itemnumber,
+        DATE_FORMAT(o.date_due, '%d-%m-%Y') AS DueDate,
+        DATEDIFF(CURDATE(), o.date_due) - 6 - (
+            SELECT COUNT(*)
+            FROM issues
+            WHERE date_due >= o.date_due
+            AND DATE_FORMAT(date_due, '%W') = 'Friday'
+        ) AS TotalDays,
+        CAST(a.amountoutstanding AS SIGNED) AS AmountOutStanding,
+        CAST(a.amount AS SIGNED) AS Amount,
+        a.status AS status,
+        a.timestamp AS timestamp,
+        a.credit_type_code AS credit_type_code
+    FROM
+        (
+            (
+                accountlines a
+                LEFT JOIN issues o ON o.itemnumber = a.itemnumber
+            )
+            LEFT JOIN items i ON i.itemnumber = a.itemnumber
+        )
+        LEFT JOIN borrowers b ON b.borrowernumber = a.borrowernumber
+    WHERE
+        a.amountoutstanding > 0
+        AND a.status LIKE 'UNRETURNED'
+    GROUP BY
+        a.borrowernumber
+) AS DerivedTable;
