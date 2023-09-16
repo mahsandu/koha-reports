@@ -3,26 +3,26 @@ SELECT
     barcode,
     itemnumber,
     DueDate,
-    TotalDays,
-    CAST(AmountOutStanding AS SIGNED) AS AmountOutStanding,
+    ReturnDate,
+    DueDays,
+    1 AS TodayInCalc,
+    7 AS GracePeriod,
+    Holidays,
+    (DueDays - (Holidays + 8)) AS FineDays,
+    ((DueDays - (Holidays + 8)) * 2) AS TotalFine,
     CAST(Amount AS SIGNED) AS Amount,
-    (TotalDays * 2) AS TotalFine,
     status,
     timestamp,
     credit_type_code
-    
 FROM (
     SELECT
         b.cardnumber AS cardnumber,
         i.barcode AS barcode,
         a.itemnumber AS itemnumber,
         DATE_FORMAT(o.date_due, '%d-%m-%Y') AS DueDate,
-        DATEDIFF(CURDATE(), o.date_due) - 6 - (
-            SELECT COUNT(*)
-            FROM issues
-            WHERE date_due >= o.date_due
-            AND DATE_FORMAT(date_due, '%W') = 'Friday'
-        ) AS TotalDays,
+        DATE_FORMAT(o.returndate, '%d-%m-%Y') AS ReturnDate,
+        CAST(DATEDIFF(o.returndate, o.date_due) AS SIGNED) AS DueDays,
+        CAST(SUM(DATEDIFF(o.returndate, o.date_due) /7) AS SIGNED) AS HoliDays,
         CAST(a.amountoutstanding AS SIGNED) AS AmountOutStanding,
         CAST(a.amount AS SIGNED) AS Amount,
         a.status AS status,
@@ -32,14 +32,15 @@ FROM (
         (
             (
                 accountlines a
-                LEFT JOIN issues o ON o.itemnumber = a.itemnumber
+                LEFT JOIN old_issues o ON o.itemnumber = a.itemnumber
             )
             LEFT JOIN items i ON i.itemnumber = a.itemnumber
         )
         LEFT JOIN borrowers b ON b.borrowernumber = a.borrowernumber
     WHERE
         a.amountoutstanding > 0
-        AND a.status LIKE 'UNRETURNED'
+        AND STATUS ='RETURNED'
+        AND a.itemnumber = '12780' -- Replace with the itemnumber you want to filter by
     GROUP BY
         a.borrowernumber
 ) AS DerivedTable;
