@@ -68,13 +68,6 @@ systemctl reload postfix
 # Enable necessary Apache2 modules (cgi)
 a2enmod cgi
 
-# Open necessary ports in the firewall for Koha, Webmin, and SMTP
-ufw allow 80/tcp
-ufw allow 8080/tcp
-ufw allow 587/tcp  # Gmail SMTP port
-ufw allow 22/tcp   # Allow SSH if not already allowed
-ufw enable
-
 # Start and enable services
 systemctl start apache2
 systemctl enable apache2
@@ -119,7 +112,7 @@ sed -i -E "s/^(ServerName ).*$/\1$opac_domain/" "$apache_config"
 sed -i -E "s/^(ServerAlias ).*$/\1$staff_domain/" "$apache_config"
 
 # Disable Apache2 default configuration to avoid conflicts
-a2dissite 000-default
+a2dissite 000-default.conf
 
 # Reload Apache to apply changes
 systemctl reload apache2
@@ -165,7 +158,17 @@ else
     echo "No SSL certificates obtained. Using default ports for OPAC and Staff Interface."
 fi
 
+#get ports 
+ssh_port=grep -Ei '^Port ' /etc/ssh/sshd_config
+webmin_port=grep -Ei '^port ' /etc/webmin/miniserv.conf
+
 # Open necessary ports in the firewall for Koha, Webmin, and SMTP
+ufw allow 80/tcp
+ufw allow 8080/tcp
+ufw allow 587/tcp  # Gmail SMTP port
+ufw allow 22/tcp   # Allow SSH if not already allowed
+ufw allow $ssh_port/tcp   # Allow SSH if not already allowed
+ufw allow $webmin_port/tcp   # Allow Webmin if not already allowed
 ufw allow 443/tcp  # HTTPS
 ufw enable
 
