@@ -36,8 +36,19 @@ apt install -y webmin
 # Install Koha
 apt install -y koha-common
 
+# Enable necessary Apache2 modules (cgi)
+a2enmod cgi rewrite
+# Disable Apache2 default configuration to avoid conflicts
+a2dissite 000-default
+
+systemctl restart apache2
 # Create Koha ILS database with short name
-koha-create --create-db "$library_shortname"
+if koha-create --create-db "$library_shortname"; then
+    echo "Koha database created successfully."
+else
+    echo "Error: Koha database creation failed. Please check for any errors in the command."
+    exit 1  # Exit the script with an error code
+fi
 
 # Configure Postfix for Gmail SMTP (relayhost) if SMTP information is provided
 if [ -n "$smtp_email" ] && [ -n "$smtp_username" ] && [ -n "$smtp_password" ]; then
@@ -65,8 +76,7 @@ fi
 # Reload Postfix
 systemctl reload postfix
 
-# Enable necessary Apache2 modules (cgi)
-a2enmod cgi
+
 
 # Start and enable services
 systemctl start apache2
@@ -110,9 +120,6 @@ apache_config="/etc/apache2/sites-available/$library_shortname.conf"
 sed -i -E "s/^(ServerAdmin ).*$/\1$library_email/" "$apache_config"
 sed -i -E "s/^(ServerName ).*$/\1$opac_domain/" "$apache_config"
 sed -i -E "s/^(ServerAlias ).*$/\1$staff_domain/" "$apache_config"
-
-# Disable Apache2 default configuration to avoid conflicts
-a2dissite 000-default.conf
 
 # Reload Apache to apply changes
 systemctl reload apache2
