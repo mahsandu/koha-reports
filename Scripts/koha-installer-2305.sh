@@ -1,5 +1,42 @@
 #!/bin/bash
 
+# Check the operating system
+os=$(cat /etc/os-release | grep -oP '^ID=\K\w+')
+
+if [ "$os" != "debian" ] && [ "$os" != "ubuntu" ]; then
+    echo "Error: This script is intended for Debian and Ubuntu only. Exiting."
+    exit 1
+fi
+
+# Detect the version and set the default repositories
+if [ "$os" == "debian" ]; then
+    version=$(cat /etc/os-release | grep -oP '^VERSION_ID="\K[^"]+')
+    repository_main="deb http://deb.debian.org/debian $version main"
+    repository_contrib="deb http://deb.debian.org/debian $version contrib"
+    repository_nonfree="deb http://deb.debian.org/debian $version non-free"
+    repository_security="deb http://security.debian.org/debian-security $version/updates main contrib non-free"
+elif [ "$os" == "ubuntu" ]; then
+    codename=$(lsb_release -cs)
+    repository_main="deb http://archive.ubuntu.com/ubuntu/ $codename main"
+    repository_universe="deb http://archive.ubuntu.com/ubuntu/ $codename universe"
+    repository_restricted="deb http://archive.ubuntu.com/ubuntu/ $codename restricted"
+    repository_multiverse="deb http://archive.ubuntu.com/ubuntu/ $codename multiverse"
+    repository_security="deb http://security.ubuntu.com/ubuntu $codename-security main universe restricted multiverse"
+fi
+
+# Replace the default repositories with the detected ones
+sed -i "s/^deb http:\/\/deb.debian.org\/debian.*/$repository_main/g" /etc/apt/sources.list
+sed -i "s/^deb http:\/\/deb.debian.org\/debian.*/$repository_contrib/g" /etc/apt/sources.list
+sed -i "s/^deb http:\/\/deb.debian.org\/debian.*/$repository_nonfree/g" /etc/apt/sources.list
+sed -i "s/^deb http:\/\/security.debian.org\/debian-security.*/$repository_security/g" /etc/apt/sources.list
+
+# Update the package list and upgrade existing packages
+apt update
+apt upgrade -y
+
+# The rest of your script goes here
+
+
 # Prompt for library-related information
 read -p "Library Name: " library_name
 read -p "Library Short Name: " library_shortname
