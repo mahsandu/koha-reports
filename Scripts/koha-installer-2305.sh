@@ -10,7 +10,7 @@ fi
 
 # Detect the version and set the default repositories
 if [ "$os" == "debian" ]; then
-    version=$(cat /etc/os-release | grep -oP '^VERSION_ID="\K[^"]+')
+    version=$(grep -oP '^VERSION_CODENAME=\K\w+' /etc/os-release)
     repository_main="deb http://deb.debian.org/debian $version main"
     repository_contrib="deb http://deb.debian.org/debian $version contrib"
     repository_nonfree="deb http://deb.debian.org/debian $version non-free"
@@ -33,8 +33,6 @@ sed -i "s/^deb http:\/\/security.debian.org\/debian-security.*/$repository_secur
 # Update the package list and upgrade existing packages
 apt update
 apt upgrade -y
-
-# The rest of your script goes here
 
 
 # Prompt for library-related information
