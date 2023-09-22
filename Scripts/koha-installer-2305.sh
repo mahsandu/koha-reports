@@ -9,6 +9,10 @@ read -p "SMTP Username (optional): " smtp_username
 read -s -p "SMTP Password (optional): " smtp_password
 echo
 
+# Set the hostname to the library shortname
+hostnamectl set-hostname "$library_shortname"
+echo "$library_shortname" > /etc/hostname
+
 # Update the package list and upgrade existing packages
 apt update
 apt upgrade -y
@@ -83,18 +87,87 @@ systemctl enable webmin
 
 # Modify the default.idx file as described
 if grep -q "charmap word-phrase-utf.chr" /etc/koha/zebradb/etc/default.idx; then
-    sed -i 's/charmap word-phrase-utf.chr/# charmap word-phrase-utf.chr/' /etc/koha/zebradb/etc/default.idx; then
-    sed -i '/# charmap word-phrase-utf.chr/a icuchain words-icu.xml' /etc/koha/zebradb/etc/default.idx
+    sed -i 's/charmap word-phrase-utf.chr/icuchain words-icu.xml/' /etc/koha/zebradb/etc/default.idx
 fi
 
-# Add the line "icuchain words-icu.xml" below the commented lines
-echo "icuchain words-icu.xml" >> /etc/koha/zebradb/etc/default.idx
+koha-rebuild-zebra -a -b -v -f $library_shortname
 
-# Print instructions for finishing the Koha setup
-echo "Koha installation is complete. Please follow the instructions provided in the Koha documentation to complete the setup: https://wiki.koha-community.org/wiki/Koha_on_ubuntu_-_packages"
+# Prompt the user to choose between domain and port (optional)
+echo "Do you want to configure the interfaces with domains (1) or default ports (2)?"
+read -p "Enter your choice (1 or 2): " interface_choice
 
-# Clean up unnecessary files
-rm jcameron-key.asc
+# Validate user choice
+if [ "$interface_choice" != "1" ] && [ "$interface_choice" != "2" ]; then
+    echo "Invalid choice. Configuring interfaces with default ports (OPAC: 80, Staff: 8080)."
+    opac_domain=""
+    staff_domain="localhost:8080"
+else
+    if [ "$interface_choice" == "1" ]; then
+        # Prompt for domain names
+        read -p "Enter OPAC Domain Name: " opac_domain
+        read -p "Enter Staff Interface Domain Name: " staff_domain
+    else
+        opac_domain=""
+        staff_domain="localhost:8080"
+    fi
+fi
+
+# Update the Apache virtual host configuration for the library
+apache_config="/etc/apache2/sites-available/$library_shortname.conf"
+sed -i -E "s/^(ServerAdmin ).*$/\1$library_email/" "$apache_config"
+sed -i -E "s/^(ServerName ).*$/\1$opac_domain/" "$apache_config"
+sed -i -E "s/^(ServerAlias ).*$/\1$staff_domain/" "$apache_config"
+
+# Disable Apache2 default configuration to avoid conflicts
+a2dissite 000-default
+
+# Reload Apache to apply changes
+systemctl reload apache2
+
+# Print confirmation
+if [ "$interface_choice" == "1" ]; then
+    echo "Virtual host configuration updated for $library_shortname OPAC with domain: $opac_domain"
+    echo "Virtual host configuration updated for $library_shortname Staff Interface with domain: $staff_domain"
+else
+    echo "Virtual host configuration updated for $library_shortname OPAC using port 80"
+    echo "Virtual host configuration updated for $library_shortname Staff Interface using port 8080"
+fi
+
+# Install Certbot
+apt install -y certbot python3-certbot-apache
+
+# Use library email as the default email address for SSL certificate
+ssl_email="$library_email"
+
+# Configure SSL certificate with Certbot (if domains are provided)
+if [ -n "$opac_domain" ] && [ -n "$staff_domain" ]; then
+    # Obtain SSL certificate for OPAC domain
+    certbot --apache -d "$opac_domain" --email "$ssl_email" --agree-tos --no-eff-email
+    
+    # Obtain SSL certificate for Staff Interface domain
+    certbot --apache -d "$staff_domain" --email "$ssl_email" --agree-tos --no-eff-email
+    
+    # Update virtual host configurations with SSL settings
+    sed -i -E "s/^(<VirtualHost \*:80>)/\1\n\tServerName $opac_domain\n\tRedirect permanent \/ https:\/\/$opac_domain\/\n\tSSLEngine on\n\tSSLCertificateFile \/etc\/letsencrypt\/live\/$opac_domain\/fullchain.pem\n\tSSLCertificateKeyFile \/etc\/letsencrypt\/live\/$opac_domain\/privkey.pem\n\tSSLCertificateChainFile \/etc\/letsencrypt\/live\/$opac_domain\/chain.pem/" "$apache_config"
+    sed -i -E "s/^(<VirtualHost \*:80>)/\1\n\tServerName $staff_domain\n\tRedirect permanent \/ https:\/\/$staff_domain\/\n\tSSLEngine on\n\tSSLCertificateFile \/etc\/letsencrypt\/live\/$staff_domain\/fullchain.pem\n\tSSLCertificateKeyFile \/etc\/letsencrypt\/live\/$staff_domain\/privkey.pem\n\tSSLCertificateChainFile \/etc\/letsencrypt\/live\/$staff_domain\/chain.pem/" "$apache_config"
+fi
+
+# Reload Apache to apply SSL and redirection changes
+systemctl reload apache2
+
+# Print confirmation
+if [ -n "$opac_domain" ] && [ -n "$staff_domain" ]; then
+    echo "SSL certificates obtained and configured for domains:"
+    echo "- OPAC: $opac_domain"
+    echo "- Staff Interface: $staff_domain"
+    echo "HTTP and HTTPS traffic are allowed, and HTTP traffic is redirected to HTTPS."
+else
+    echo "No SSL certificates obtained. Using default ports for OPAC and Staff Interface."
+fi
+
+# Open necessary ports in the firewall for Koha, Webmin, and SMTP
+ufw allow 443/tcp  # HTTPS
+ufw enable
 
 # Search for the crontab.example file
 crontab_example_file=$(find / -type f -name "crontab.example" 2>/dev/null)
@@ -125,4 +198,3 @@ usermod -aG sudo "$username"
 
 # Allow members of the sudo group to execute commands without a password prompt
 echo "%sudo ALL=(ALL) NOPASSWD: ALL" > /etc/sudoers.d/90-sudo-users
-
